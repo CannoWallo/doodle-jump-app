@@ -1,7 +1,7 @@
 name: Build and Deploy Game
 on:
   push:
-    branches: [ main ] # Робот сработает, когда ты сохранишь изменения в ветке main
+    branches: [ main ]
 
 jobs:
   build-n-deploy:
@@ -15,11 +15,11 @@ jobs:
 
       - name: Build Game
         run: |
-          # Эта команда соберет твой main.py в папку build/web
-          python -m pygbag --build main.py
+          # Собираем игру. Файл main.py должен лежать в корне репозитория!
+          python -m pygbag --build --no_package main.py
 
       - name: Upload to GitHub Pages
         uses: JamesIves/github-pages-deploy-action@v4
         with:
-          folder: build/web # Загружаем только готовую версию сайта
-          branch: gh-pages # Отправляем её в специальную ветку для сайтов
+          folder: build/web
+          branch: gh-pages
