@@ -15,7 +15,9 @@ jobs:
         run: python -m pip install pygbag
 
       - name: Build Game
-        run: python -m pygbag --build --no_package main.py
+        run: |
+          # Убрали --no_package, оставили только --build
+          python -m pygbag --build main.py
 
       - name: Upload to GitHub Pages
         uses: JamesIves/github-pages-deploy-action@v4
