@@ -26,7 +26,7 @@ ROCKET_SLOWDOWN = 45
 FRICTION = -0.12
 ACCELERATION = 0.9
 
-# ================== ИГРОК ==================
+# ================== КЛАССЫ (ОСТАЮТСЯ БЕЗ ИЗМЕНЕНИЙ) ==================
 class Player(pygame.sprite.Sprite):
     def __init__(self):
         super().__init__()
@@ -99,7 +99,6 @@ class Player(pygame.sprite.Sprite):
         self.image = pygame.transform.rotate(flipped_img, self.angle)
         self.rect = self.image.get_rect(center=self.rect.center)
 
-# ================== ОБЪЕКТЫ ==================
 class Booster(pygame.sprite.Sprite):
     def __init__(self, x, y):
         super().__init__()
@@ -185,12 +184,16 @@ class Enemy(pygame.sprite.Sprite):
 # ================== MAIN ==================
 async def main():
     pygame.init()
+    # КРИТИЧЕСКИ ВАЖНО ДЛЯ ВЕБА
+    await asyncio.sleep(0.1) 
+    
     screen = pygame.display.set_mode((WIDTH, HEIGHT))
-    pygame.display.set_caption("Doodle Jump: Fix Menu")
+    pygame.display.set_caption("Doodle Jump App")
     clock = pygame.time.Clock()
     
+    # ПЕРЕИМЕНОВАНО В bg.jpg ДЛЯ СТАБИЛЬНОСТИ
     try:
-        bg_img = pygame.image.load("фон швейка тест.jpg").convert()
+        bg_img = pygame.image.load("bg.jpg").convert()
         bg_img = pygame.transform.smoothscale(bg_img, (WIDTH, HEIGHT))
     except:
         bg_img = pygame.Surface((WIDTH, HEIGHT)); bg_img.fill(SKY_BLUE)
@@ -216,7 +219,6 @@ async def main():
         if player.score > player.high_score: player.high_score = player.score
         player.reset()
         platforms.clear(); boosters.empty(); bullets.empty(); enemies.empty()
-        # Начальная большая платформа
         platforms.append(Platform(0, HEIGHT - 20, WIDTH, "normal"))
         y = HEIGHT - 110
         for _ in range(10):
@@ -243,7 +245,6 @@ async def main():
                     if player.rocket_timer <= 0:
                         bullets.add(Bullet(player.rect.centerx, player.rect.top))
                 elif game_state == "GAMEOVER":
-                    # Проверка кликов по кнопкам проигрыша
                     retry_rect = pygame.Rect(WIDTH//2 - 85, HEIGHT//2 + 20, 170, 45)
                     menu_rect = pygame.Rect(WIDTH//2 - 85, HEIGHT//2 + 80, 170, 45)
                     if retry_rect.collidepoint(m_pos): 
@@ -318,23 +319,19 @@ async def main():
             if player.pos.y > HEIGHT: game_state = "GAMEOVER"
 
         elif game_state == "GAMEOVER":
-            if player.score > player.high_score: player.high_score = player.score
             screen.blit(font_b.render("КОНЕЦ ИГРЫ", True, RED), (WIDTH//2-110, HEIGHT//2-60))
-            
-            # Кнопка ЕЩЕ РАЗ
             btn_retry = pygame.Rect(WIDTH//2 - 85, HEIGHT//2 + 20, 170, 45)
             pygame.draw.rect(screen, BLACK, btn_retry, border_radius=10)
             pygame.draw.rect(screen, WHITE, btn_retry.inflate(-4,-4), border_radius=8)
             screen.blit(font_s.render("ЕЩЕ РАЗ", True, BLACK), (btn_retry.centerx - 40, btn_retry.centery - 12))
             
-            # Кнопка В МЕНЮ (была потеряна)
             btn_menu = pygame.Rect(WIDTH//2 - 85, HEIGHT//2 + 80, 170, 45)
             pygame.draw.rect(screen, BLACK, btn_menu, border_radius=10)
             pygame.draw.rect(screen, DARK_BLUE, btn_menu.inflate(-4,-4), border_radius=8)
             screen.blit(font_s.render("В МЕНЮ", True, WHITE), (btn_menu.centerx - 35, btn_menu.centery - 12))
 
         pygame.display.flip()
-        await asyncio.sleep(0)
+        await asyncio.sleep(0) # ВАЖНО ДЛЯ ВЕБА
         clock.tick(FPS)
 
 if __name__ == "__main__":
