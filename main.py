@@ -26,10 +26,11 @@ ROCKET_SLOWDOWN = 45
 FRICTION = -0.12
 ACCELERATION = 0.9
 
-# ================== КЛАССЫ (ОСТАЮТСЯ БЕЗ ИЗМЕНЕНИЙ) ==================
+# ================== ИГРОК ==================
 class Player(pygame.sprite.Sprite):
     def __init__(self):
         super().__init__()
+        # Упростил пути для надежности в вебе
         self.char_paths = ["liza.webp", "nika.webp", "tvorch.webp", "egor.webp"]
         self.char_images = []
         self.current_char_idx = 0
@@ -45,7 +46,8 @@ class Player(pygame.sprite.Sprite):
                 h = 80 
                 w = int(h * aspect)
                 self.char_images.append(pygame.transform.smoothscale(img, (w, h)))
-            except:
+            except Exception as e:
+                print(f"Error loading {path}: {e}")
                 fallback = pygame.Surface((50, 80)); fallback.fill((200, 100, 200))
                 self.char_images.append(fallback)
         self.original_image = self.char_images[self.current_char_idx]
@@ -99,6 +101,7 @@ class Player(pygame.sprite.Sprite):
         self.image = pygame.transform.rotate(flipped_img, self.angle)
         self.rect = self.image.get_rect(center=self.rect.center)
 
+# ================== ОБЪЕКТЫ ==================
 class Booster(pygame.sprite.Sprite):
     def __init__(self, x, y):
         super().__init__()
@@ -184,19 +187,18 @@ class Enemy(pygame.sprite.Sprite):
 # ================== MAIN ==================
 async def main():
     pygame.init()
-    # КРИТИЧЕСКИ ВАЖНО ДЛЯ ВЕБА
-    await asyncio.sleep(0.1) 
-    
+    await asyncio.sleep(0.1) # Пауза для инициализации в браузере
     screen = pygame.display.set_mode((WIDTH, HEIGHT))
-    pygame.display.set_caption("Doodle Jump App")
+    pygame.display.set_caption("Doodle Jump")
     clock = pygame.time.Clock()
     
-    # ПЕРЕИМЕНОВАНО В bg.jpg ДЛЯ СТАБИЛЬНОСТИ
+    # Пытаемся загрузить фон с новым именем bg.jpg
     try:
         bg_img = pygame.image.load("bg.jpg").convert()
         bg_img = pygame.transform.smoothscale(bg_img, (WIDTH, HEIGHT))
     except:
-        bg_img = pygame.Surface((WIDTH, HEIGHT)); bg_img.fill(SKY_BLUE)
+        bg_img = pygame.Surface((WIDTH, HEIGHT))
+        bg_img.fill(SKY_BLUE)
 
     font_xs = pygame.font.SysFont("Verdana", 14, bold=True)
     font_s = pygame.font.SysFont("Verdana", 18, bold=True)
@@ -311,7 +313,6 @@ async def main():
             screen.blit(font_s.render(f"СЧЕТ: {player.score}", True, WHITE), (15, 12))
             screen.blit(font_xs.render(f"РЕКОРД: {max(player.high_score, player.score)}", True, GOLD), (WIDTH-120, 15))
             
-            # Кнопка выстрела
             pygame.draw.circle(screen, BLACK, shoot_btn_rect.center, 37)
             pygame.draw.circle(screen, GOLD, shoot_btn_rect.center, 35)
             pygame.draw.line(screen, BLACK, (shoot_btn_rect.centerx, shoot_btn_rect.centery-15), (shoot_btn_rect.centerx, shoot_btn_rect.centery+15), 4)
@@ -331,7 +332,7 @@ async def main():
             screen.blit(font_s.render("В МЕНЮ", True, WHITE), (btn_menu.centerx - 35, btn_menu.centery - 12))
 
         pygame.display.flip()
-        await asyncio.sleep(0) # ВАЖНО ДЛЯ ВЕБА
+        await asyncio.sleep(0)
         clock.tick(FPS)
 
 if __name__ == "__main__":
