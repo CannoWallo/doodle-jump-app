@@ -2,6 +2,7 @@ import pygame
 import random
 import math
 import asyncio
+import sys
 
 # ================== НАСТРОЙКИ ==================
 WIDTH, HEIGHT = 360, 640
@@ -22,8 +23,9 @@ ROCKET_SLOWDOWN = 45
 class Player(pygame.sprite.Sprite):
     def __init__(self):
         super().__init__()
+        # Убедись, что эти имена СОВПАДАЮТ с именами файлов на GitHub
         self.char_paths = ["liza.webp", "nika.webp", "tvorch.webp", "egor.webp"]
-        self.char_names = [p.split('.')[0].upper() for p in self.char_paths]
+        self.char_names = ["LIZA", "NIKA", "TVORCH", "EGOR"]
         
         self.char_game_images = []
         self.char_menu_images = []
@@ -35,6 +37,7 @@ class Player(pygame.sprite.Sprite):
     def load_sprites(self):
         for path in self.char_paths:
             try:
+                print(f"Загрузка персонажа: {path}...") # Видно в консоли браузера
                 original_img = pygame.image.load(path).convert_alpha()
                 h_game = 80
                 w_game = int(h_game * (original_img.get_width() / original_img.get_height()))
@@ -43,7 +46,8 @@ class Player(pygame.sprite.Sprite):
                 h_menu = 280
                 w_menu = int(h_menu * (original_img.get_width() / original_img.get_height()))
                 self.char_menu_images.append(pygame.transform.smoothscale(original_img, (w_menu, h_menu)))
-            except:
+            except Exception as e:
+                print(f"Ошибка загрузки {path}: {e}")
                 f = pygame.Surface((60, 80), pygame.SRCALPHA); f.fill((200, 100, 200))
                 self.char_game_images.append(f)
                 self.char_menu_images.append(pygame.transform.scale(f, (180, 240)))
@@ -72,28 +76,19 @@ class Player(pygame.sprite.Sprite):
         self.rocket_timer = 0
 
     def update(self, target_x, is_pressing):
-        # Исправленное горизонтальное управление
         if is_pressing:
             dx = target_x - self.pos.x
-            
-            # Учет перелета через край экрана для расчета кратчайшего пути
             if dx > WIDTH / 2: dx -= WIDTH
             elif dx < -WIDTH / 2: dx += WIDTH
-            
-            # "Мертвая зона" — если мышь в пределах 10 пикселей, не ускоряемся (убирает дрожание)
             if abs(dx) > 10:
                 if dx > 0: self.vel.x += self.accel_x
                 else: self.vel.x -= self.accel_x
         
-        # Плавное торможение
         self.vel.x *= self.friction
-        
-        # Ограничение скорости
         limit = 10 * self.speed_multiplier
         if self.vel.x > limit: self.vel.x = limit
         if self.vel.x < -limit: self.vel.x = -limit
 
-        # Вертикальное движение
         if self.rocket_timer > ROCKET_SLOWDOWN:
             self.vel.y = ROCKET_MAX_SPEED
             self.rocket_timer -= 1
@@ -104,18 +99,13 @@ class Player(pygame.sprite.Sprite):
             if self.angle % 360 != 0: self.angle -= 10
         else:
             self.vel.y += BASE_GRAVITY * self.speed_multiplier
-            # Наклон зависит от скорости, но плавно
             target_angle = -self.vel.x * 3
             self.angle += (target_angle - self.angle) * 0.1
 
-        # Применяем физику
         self.pos += self.vel
-
-        # Бесконечный экран
         if self.pos.x > WIDTH: self.pos.x -= WIDTH
         elif self.pos.x < 0: self.pos.x += WIDTH
         
-        # Отрисовка
         img = self.original_image if self.vel.x >= 0 else pygame.transform.flip(self.original_image, True, False)
         self.image = pygame.transform.rotate(img, self.angle)
         self.rect = self.image.get_rect(center=(int(self.pos.x), int(self.pos.y)))
@@ -203,12 +193,10 @@ async def main():
     screen = pygame.display.set_mode((WIDTH, HEIGHT), pygame.SCALED)
     clock = pygame.time.Clock()
     
-    try:
-        font_s = pygame.font.SysFont("Arial", 18, bold=True)
-        font_b = pygame.font.SysFont("Arial", 36, bold=True)
-        font_name = pygame.font.SysFont("Arial", 28, bold=True)
-    except:
-        font_s = pygame.font.Font(None, 24); font_b = pygame.font.Font(None, 40); font_name = pygame.font.Font(None, 34)
+    # Исправленная инициализация шрифтов (используем стандартные, если кастомных нет)
+    font_s = pygame.font.SysFont("Arial", 18, bold=True)
+    font_b = pygame.font.SysFont("Arial", 36, bold=True)
+    font_name = pygame.font.SysFont("Arial", 28, bold=True)
 
     try:
         bg = pygame.transform.smoothscale(pygame.image.load("bg.jpg").convert(), (WIDTH, HEIGHT))
@@ -283,7 +271,8 @@ async def main():
             screen.blit(name_text, (name_bg.centerx - name_text.get_width()//2, name_bg.centery - name_text.get_height()//2))
             start_area = pygame.Rect(WIDTH//2 - 100, HEIGHT - 100, 200, 55)
             pygame.draw.rect(screen, DARK_BLUE, start_area, border_radius=18)
-            screen.blit(font_s.render("ИГРАТЬ", True, WHITE), (start_area.centerx - 30, start_area.centery - 10))
+            st_txt = font_s.render("ИГРАТЬ", True, WHITE)
+            screen.blit(st_txt, (start_area.centerx - st_txt.get_width()//2, start_area.centery - st_txt.get_height()//2))
 
         elif state == "PLAYING":
             player.speed_multiplier = 1.0 + (player.score // 70) * 0.2
@@ -338,7 +327,7 @@ async def main():
             screen.blit(font_s.render("В МЕНЮ", True, WHITE), (btn_menu.centerx-30, btn_menu.centery-10))
 
         pygame.display.flip()
-        await asyncio.sleep(0)
+        await asyncio.sleep(0) # Важно для работы в вебе!
         clock.tick(FPS)
 
 if __name__ == "__main__":
