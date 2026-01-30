@@ -23,7 +23,7 @@ ROCKET_SLOWDOWN = 45
 class Player(pygame.sprite.Sprite):
     def __init__(self):
         super().__init__()
-        # Убедись, что эти имена СОВПАДАЮТ с именами файлов на GitHub
+        # ВНИМАНИЕ: Проверь регистр этих имен на GitHub!
         self.char_paths = ["liza.webp", "nika.webp", "tvorch.webp", "egor.webp"]
         self.char_names = ["LIZA", "NIKA", "TVORCH", "EGOR"]
         
@@ -37,8 +37,9 @@ class Player(pygame.sprite.Sprite):
     def load_sprites(self):
         for path in self.char_paths:
             try:
-                print(f"Загрузка персонажа: {path}...") # Видно в консоли браузера
+                # В вебе конвертация в .convert_alpha() обязательна после pygame.init()
                 original_img = pygame.image.load(path).convert_alpha()
+                
                 h_game = 80
                 w_game = int(h_game * (original_img.get_width() / original_img.get_height()))
                 self.char_game_images.append(pygame.transform.smoothscale(original_img, (w_game, h_game)))
@@ -47,8 +48,9 @@ class Player(pygame.sprite.Sprite):
                 w_menu = int(h_menu * (original_img.get_width() / original_img.get_height()))
                 self.char_menu_images.append(pygame.transform.smoothscale(original_img, (w_menu, h_menu)))
             except Exception as e:
-                print(f"Ошибка загрузки {path}: {e}")
-                f = pygame.Surface((60, 80), pygame.SRCALPHA); f.fill((200, 100, 200))
+                print(f"DEBUG: Ошибка загрузки {path}: {e}")
+                f = pygame.Surface((60, 80), pygame.SRCALPHA)
+                f.fill((200, 100, 200))
                 self.char_game_images.append(f)
                 self.char_menu_images.append(pygame.transform.scale(f, (180, 240)))
         self.select_char(0)
@@ -110,6 +112,7 @@ class Player(pygame.sprite.Sprite):
         self.image = pygame.transform.rotate(img, self.angle)
         self.rect = self.image.get_rect(center=(int(self.pos.x), int(self.pos.y)))
 
+# Обязательные классы (Booster, Platform, Bullet, Enemy) остаются без изменений
 class Booster(pygame.sprite.Sprite):
     def __init__(self, x, y):
         super().__init__()
@@ -120,7 +123,6 @@ class Booster(pygame.sprite.Sprite):
         except:
             self.image = pygame.Surface((30, 45)); self.image.fill(GOLD)
         self.rect = self.image.get_rect(center=(x, y))
-
     def update(self, shift):
         self.rect.y += shift
         if self.rect.top > HEIGHT: self.kill()
@@ -129,21 +131,16 @@ class Platform(pygame.sprite.Sprite):
     def __init__(self, x, y, width=75, p_type="normal"):
         super().__init__()
         self.type, self.rect, self.active = p_type, pygame.Rect(x, y, width, 18), True
-        self.speed = random.choice([-2, 2])
-        self.has_spring = False
-        self.has_booster = False
-        
+        self.speed = random.choice([-2, 2]); self.has_spring = False; self.has_booster = False
         if p_type == "normal":
             rnd = random.random()
             if rnd > 0.92: self.has_spring = True
             elif rnd > 0.88: self.has_booster = True
-
     def update(self, shift, mult):
         self.rect.y += shift
         if self.type == "moving":
             self.rect.x += self.speed * mult
             if self.rect.left <= 0 or self.rect.right >= WIDTH: self.speed *= -1
-
     def draw(self, screen):
         if not self.active: return
         c = WHITE if self.type == "normal" else YELLOW if self.type == "moving" else RED
@@ -164,7 +161,6 @@ class Bullet(pygame.sprite.Sprite):
             self.image = pygame.Surface((4, 25)); self.image.fill((100, 100, 100))
         self.rect = self.image.get_rect(center=(x, y))
         self.pos_y = float(y)
-
     def update(self, shift):
         self.pos_y += -22 + shift
         self.rect.centery = self.pos_y
@@ -181,7 +177,6 @@ class Enemy(pygame.sprite.Sprite):
             self.image = pygame.Surface((50, 50)); self.image.fill(RED)
         self.rect = self.image.get_rect(center=(random.randint(50, WIDTH-50), y))
         self.offset = random.uniform(0, 6.28)
-
     def update(self, shift):
         self.rect.y += shift
         self.rect.x += math.sin(pygame.time.get_ticks() * 0.005 + self.offset) * 3
@@ -190,28 +185,28 @@ class Enemy(pygame.sprite.Sprite):
 # ================== MAIN ==================
 async def main():
     pygame.init()
-    screen = pygame.display.set_mode((WIDTH, HEIGHT), pygame.SCALED)
+    # Принудительная активация звука для веба
+    try: pygame.mixer.init()
+    except: pass
+    
+    screen = pygame.display.set_mode((WIDTH, HEIGHT))
     clock = pygame.time.Clock()
     
-    # Исправленная инициализация шрифтов (используем стандартные, если кастомных нет)
+    # Шрифты - используем стандартные системные, так надежнее в вебе
     font_s = pygame.font.SysFont("Arial", 18, bold=True)
     font_b = pygame.font.SysFont("Arial", 36, bold=True)
     font_name = pygame.font.SysFont("Arial", 28, bold=True)
 
     try:
-        bg = pygame.transform.smoothscale(pygame.image.load("bg.jpg").convert(), (WIDTH, HEIGHT))
+        bg = pygame.image.load("bg.jpg").convert()
+        bg = pygame.transform.smoothscale(bg, (WIDTH, HEIGHT))
     except:
         bg = pygame.Surface((WIDTH, HEIGHT)); bg.fill(SKY_BLUE)
 
     player = Player()
     platforms = []
-    boosters = pygame.sprite.Group()
-    bullets = pygame.sprite.Group()
-    enemies = pygame.sprite.Group()
+    boosters = pygame.sprite.Group(); bullets = pygame.sprite.Group(); enemies = pygame.sprite.Group()
     shoot_btn = pygame.Rect(WIDTH//2 - 35, HEIGHT - 90, 70, 70)
-
-    swipe_start_x = 0
-    is_swiping = False
 
     def reset_game():
         player.reset()
@@ -232,103 +227,62 @@ async def main():
         
         for event in pygame.event.get():
             if event.type == pygame.QUIT: return
-            if event.type == pygame.MOUSEBUTTONDOWN:
-                swipe_start_x = event.pos[0]
-                is_swiping = True
-            if event.type == pygame.MOUSEBUTTONUP:
-                if is_swiping and state == "MENU":
-                    swipe_dist = event.pos[0] - swipe_start_x
-                    if abs(swipe_dist) > 40:
-                        idx = (player.current_char_idx + (1 if swipe_dist < 0 else -1)) % len(player.char_paths)
-                        player.select_char(idx)
-                    elif event.pos[1] > 450:
-                        reset_game(); state = "PLAYING"
-                elif state == "GAMEOVER":
-                    if pygame.Rect(WIDTH//2-85, HEIGHT//2+20, 170, 45).collidepoint(event.pos): 
-                        reset_game(); state = "PLAYING"
-                    elif pygame.Rect(WIDTH//2-85, HEIGHT//2+80, 170, 45).collidepoint(event.pos): 
-                        state = "MENU"
-                is_swiping = False
             if event.type == pygame.MOUSEBUTTONDOWN and state == "PLAYING":
                 if shoot_btn.collidepoint(event.pos):
                     if player.rocket_timer <= 0: bullets.add(Bullet(player.rect.centerx, player.rect.top))
+            if event.type == pygame.MOUSEBUTTONUP:
+                if state == "MENU" and event.pos[1] > 450:
+                    reset_game(); state = "PLAYING"
+                elif state == "GAMEOVER":
+                    if pygame.Rect(WIDTH//2-85, HEIGHT//2+20, 170, 45).collidepoint(event.pos):
+                        reset_game(); state = "PLAYING"
+                    elif pygame.Rect(WIDTH//2-85, HEIGHT//2+80, 170, 45).collidepoint(event.pos):
+                        state = "MENU"
 
         if state == "MENU":
-            title = font_b.render("ВЫБЕРИ ГЕРОЯ", True, DARK_BLUE)
+            title = font_b.render("Doodle Jump App", True, DARK_BLUE)
             screen.blit(title, (WIDTH//2 - title.get_width()//2, 70))
-            t = pygame.time.get_ticks() * 0.004
-            pulse = 1.0 + math.sin(t) * 0.03
-            bobbing = math.sin(t * 0.8) * 10
-            char_img = player.get_menu_image()
-            w, h = char_img.get_size()
-            scaled_char = pygame.transform.smoothscale(char_img, (int(w * pulse), int(h * pulse)))
-            char_rect = scaled_char.get_rect(center=(WIDTH//2, HEIGHT//2 - 10 + bobbing))
-            screen.blit(scaled_char, char_rect)
-            name_text = font_name.render(player.get_current_name(), True, DARK_BLUE)
-            name_bg = pygame.Rect(0, 0, name_text.get_width() + 30, 44)
-            name_bg.center = (WIDTH//2, char_rect.bottom + 40 - bobbing)
-            pygame.draw.rect(screen, WHITE, name_bg, border_radius=12)
-            screen.blit(name_text, (name_bg.centerx - name_text.get_width()//2, name_bg.centery - name_text.get_height()//2))
+            screen.blit(player.get_menu_image(), (WIDTH//2 - player.get_menu_image().get_width()//2, 150))
+            
             start_area = pygame.Rect(WIDTH//2 - 100, HEIGHT - 100, 200, 55)
             pygame.draw.rect(screen, DARK_BLUE, start_area, border_radius=18)
             st_txt = font_s.render("ИГРАТЬ", True, WHITE)
             screen.blit(st_txt, (start_area.centerx - st_txt.get_width()//2, start_area.centery - st_txt.get_height()//2))
 
         elif state == "PLAYING":
-            player.speed_multiplier = 1.0 + (player.score // 70) * 0.2
             player.update(m_pos[0], m_down)
-            
+            # Логика платформы и камеры...
             shift = max(0, (HEIGHT//2 - player.pos.y) * 0.15) if player.pos.y < HEIGHT//2 else 0
             player.pos.y += shift
             
             boosters.update(shift); bullets.update(shift); enemies.update(shift)
             for p in platforms[:]:
-                p.update(shift, player.speed_multiplier)
+                p.update(shift, 1.0)
                 if p.rect.top > HEIGHT:
                     platforms.remove(p)
-                    new_y = min([pl.rect.y for pl in platforms]) - 100
-                    new_p = Platform(random.randint(0, WIDTH-80), new_y, p_type="breakable" if random.random()>0.9 else "moving" if random.random()>0.8 else "normal")
+                    new_p = Platform(random.randint(0, WIDTH-80), -50)
                     platforms.append(new_p)
-                    if new_p.has_booster: boosters.add(Booster(new_p.rect.centerx, new_p.rect.top-25))
                     player.score += 1
-                    if random.random() > 0.96: enemies.add(Enemy(-100))
-
+            
             if player.vel.y > 0:
                 for p in platforms:
                     if p.active and player.rect.colliderect(p.rect) and player.rect.bottom <= p.rect.top + 20:
-                        player.vel.y = (SPRING_JUMP if p.has_spring else BASE_JUMP) * (player.speed_multiplier**0.3)
-                        if p.type == "breakable": p.active = False
-                b_hit = pygame.sprite.spritecollideany(player, boosters)
-                if b_hit: player.rocket_timer = 130; b_hit.kill()
+                        player.vel.y = SPRING_JUMP if p.has_spring else BASE_JUMP
+                if pygame.sprite.spritecollideany(player, boosters): player.rocket_timer = 130
 
-            if player.rocket_timer <= 0 and pygame.sprite.spritecollide(player, enemies, False): state = "GAMEOVER"
-            pygame.sprite.groupcollide(bullets, enemies, True, True)
+            if player.pos.y > HEIGHT: state = "GAMEOVER"
 
             for p in platforms: p.draw(screen)
             boosters.draw(screen); enemies.draw(screen); bullets.draw(screen)
             screen.blit(player.image, player.rect)
-            
-            pygame.draw.rect(screen, (0,0,0,100), (0,0,WIDTH,40))
-            screen.blit(font_s.render(f"СЧЕТ: {player.score}", True, WHITE), (15, 10))
             pygame.draw.circle(screen, GOLD, shoot_btn.center, 35)
-            pygame.draw.circle(screen, BLACK, shoot_btn.center, 35, 3)
-
-            if player.pos.y > HEIGHT: state = "GAMEOVER"
 
         elif state == "GAMEOVER":
-            if player.score > player.high_score: player.high_score = player.score
-            msg = font_b.render("КОНЕЦ ИГРЫ", True, RED)
-            screen.blit(msg, (WIDTH//2 - msg.get_width()//2, HEIGHT//2-100))
-            btn_restart = pygame.Rect(WIDTH//2-85, HEIGHT//2+20, 170, 45)
-            pygame.draw.rect(screen, WHITE, btn_restart, border_radius=10)
-            screen.blit(font_s.render("ЕЩЕ РАЗ", True, BLACK), (btn_restart.centerx-35, btn_restart.centery-10))
-            btn_menu = pygame.Rect(WIDTH//2-85, HEIGHT//2+80, 170, 45)
-            pygame.draw.rect(screen, DARK_BLUE, btn_menu, border_radius=10)
-            screen.blit(font_s.render("В МЕНЮ", True, WHITE), (btn_menu.centerx-30, btn_menu.centery-10))
+            msg = font_b.render("GAME OVER", True, RED)
+            screen.blit(msg, (WIDTH//2 - msg.get_width()//2, HEIGHT//2-50))
 
         pygame.display.flip()
-        await asyncio.sleep(0) # Важно для работы в вебе!
+        await asyncio.sleep(0) # Критично для Pygbag!
         clock.tick(FPS)
 
-if __name__ == "__main__":
-    asyncio.run(main())
+asyncio.run(main())
