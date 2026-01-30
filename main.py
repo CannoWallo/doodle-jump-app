@@ -9,15 +9,14 @@ FPS = 60
 
 # Цвета
 WHITE, YELLOW, RED = (255, 255, 255), (255, 255, 0), (255, 50, 50)
-BLACK, DARK_BLUE, GOLD = (0, 0, 0), (0, 0, 139), (255, 215, 0)
+BLACK, DARK_BLUE, GOLD, SKY_BLUE = (0, 0, 0), (0, 0, 139), (255, 215, 0), (210, 230, 250)
 
-# Физика (чуть смягчил для плавности на мобилках)
+# Физика
 BASE_GRAVITY = 0.6
 BASE_JUMP = -16
 SPRING_JUMP = -32
 ROCKET_MAX_SPEED = -28 
 ROCKET_DURATION, ROCKET_SLOWDOWN = 85, 45
-FRICTION, ACCELERATION = -0.12, 0.9
 
 # ================== КЛАССЫ ==================
 class Player(pygame.sprite.Sprite):
@@ -53,13 +52,13 @@ class Player(pygame.sprite.Sprite):
     def reset(self):
         self.pos = pygame.Vector2(WIDTH // 2, HEIGHT - 100)
         self.vel = pygame.Vector2(0, 0)
-        self.acc = pygame.Vector2(0, 0)
         self.angle = 0
         self.score = 0
         self.speed_multiplier = 1.0
         self.rocket_timer = 0
 
-    def update(self, move_dir):
+    def update(self, target_x):
+        # ФАЗА ПОЛЕТА НА РОКЕТЕ
         if self.rocket_timer > ROCKET_SLOWDOWN:
             self.vel.y = ROCKET_MAX_SPEED
             self.rocket_timer -= 1
@@ -69,17 +68,24 @@ class Player(pygame.sprite.Sprite):
             self.rocket_timer -= 1
             self.angle = max(0, self.angle - 10) if self.angle % 360 != 0 else 0
         else:
-            self.acc = pygame.Vector2(move_dir * ACCELERATION * self.speed_multiplier, BASE_GRAVITY * self.speed_multiplier)
-            self.acc.x += self.vel.x * FRICTION
-            self.vel += self.acc
-            self.angle += (-self.vel.x * 3 - self.angle) * 0.1
+            # ОБЫЧНЫЙ РЕЖИМ + СЛЕДОВАНИЕ ЗА ПАЛЬЦЕМ
+            self.vel.y += BASE_GRAVITY * self.speed_multiplier
+            
+            # Плавное движение к пальцу (LERP)
+            # 0.15 - это скорость "догоняния" пальца. Чем выше, тем резче.
+            dx = target_x - self.pos.x
+            self.vel.x = dx * 0.15 
+            
+            self.angle = (-self.vel.x * 2) # Наклон в сторону движения
 
-        self.pos += self.vel + 0.5 * self.acc
+        self.pos += self.vel
+        
+        # Ограничение по краям экрана
         if self.pos.x > WIDTH: self.pos.x = 0
         elif self.pos.x < 0: self.pos.x = WIDTH
         
         self.rect.midtop = self.pos
-        img = self.original_image if self.vel.x >= -0.1 else pygame.transform.flip(self.original_image, True, False)
+        img = self.original_image if self.vel.x >= 0 else pygame.transform.flip(self.original_image, True, False)
         self.image = pygame.transform.rotate(img, self.angle)
         self.rect = self.image.get_rect(center=self.rect.center)
 
@@ -158,22 +164,21 @@ class Enemy(pygame.sprite.Sprite):
 # ================== MAIN ==================
 async def main():
     pygame.init()
-    screen = pygame.display.set_mode((WIDTH, HEIGHT))
+    # SCALED адаптирует игру под экран телефона
+    screen = pygame.display.set_mode((WIDTH, HEIGHT), pygame.SCALED)
     clock = pygame.time.Clock()
     
-    # ЭКРАН ЗАГРУЗКИ ДЛЯ TELEGRAM
+    # ЛОАДЕР (чтобы телега не закрыла приложение)
     screen.fill(BLACK)
-    font_s = pygame.font.SysFont("Verdana", 18, bold=True)
-    load_txt = font_s.render("ЗАГРУЗКА...", True, WHITE)
-    screen.blit(load_txt, (WIDTH//2 - 50, HEIGHT//2))
     pygame.display.flip()
-    await asyncio.sleep(1) # Ждем, пока браузер "переварит" ресурсы
+    await asyncio.sleep(0.5) 
 
     try:
         bg = pygame.transform.smoothscale(pygame.image.load("bg.jpg").convert(), (WIDTH, HEIGHT))
     except:
         bg = pygame.Surface((WIDTH, HEIGHT)); bg.fill(SKY_BLUE)
 
+    font_s = pygame.font.SysFont("Verdana", 18, bold=True)
     player = Player()
     platforms, boosters = [], pygame.sprite.Group()
     bullets, enemies = pygame.sprite.Group(), pygame.sprite.Group()
@@ -210,12 +215,13 @@ async def main():
             screen.blit(pygame.font.SysFont("Verdana", 32, True).render("DOODLE JUMP", True, DARK_BLUE), (50, 100))
             for i, img in enumerate(player.char_images):
                 screen.blit(img, img.get_rect(center=((WIDTH//4)*i + WIDTH//8, 300)))
-            screen.blit(font_s.render("НАЖМИ, ЧТОБЫ НАЧАТЬ", True, DARK_BLUE), (65, 480))
+            screen.blit(font_s.render("НАЖМИ ДЛЯ СТАРТА", True, DARK_BLUE), (65, 480))
 
         elif state == "PLAYING":
-            mv = -1 if m_down and m_pos[0] < WIDTH//2 and not shoot_btn.collidepoint(m_pos) else 1 if m_down and m_pos[0] >= WIDTH//2 and not shoot_btn.collidepoint(m_pos) else 0
+            # ПЕРСОНАЖ СЛЕДУЕТ ЗА ПАЛЬЦЕМ (по X)
+            target_x = m_pos[0] if m_down and not shoot_btn.collidepoint(m_pos) else player.pos.x
             player.speed_multiplier = 1.0 + (player.score // 70) * 0.2
-            player.update(mv)
+            player.update(target_x)
 
             shift = max(0, (HEIGHT//2 - player.pos.y) * 0.15) if player.pos.y < HEIGHT//2 else 0
             player.pos.y += shift
@@ -249,8 +255,6 @@ async def main():
             # UI
             pygame.draw.rect(screen, (0,0,0,100), (0,0,WIDTH,40))
             screen.blit(font_s.render(f"СЧЕТ: {player.score}", True, WHITE), (10, 8))
-            
-            # Кнопка
             pygame.draw.circle(screen, GOLD, shoot_btn.center, 35)
             pygame.draw.circle(screen, BLACK, shoot_btn.center, 35, 3)
 
