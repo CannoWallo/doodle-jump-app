@@ -16,49 +16,84 @@ BASE_GRAVITY = 0.6
 BASE_JUMP = -16
 SPRING_JUMP = -32
 ROCKET_MAX_SPEED = -28 
-ROCKET_DURATION, ROCKET_SLOWDOWN = 85, 45
+ROCKET_SLOWDOWN = 45
 
 # ================== КЛАССЫ ==================
 class Player(pygame.sprite.Sprite):
     def __init__(self):
         super().__init__()
         self.char_paths = ["liza.webp", "nika.webp", "tvorch.webp", "egor.webp"]
-        self.char_images = []
+        self.char_names = [p.split('.')[0].upper() for p in self.char_paths]
+        
+        self.char_game_images = []
+        self.char_menu_images = []
         self.current_char_idx = 0
         self.load_sprites()
-        self.reset()
         self.high_score = 0
+        self.reset()
 
     def load_sprites(self):
         for path in self.char_paths:
             try:
-                img = pygame.image.load(path).convert_alpha()
-                h = 80
-                w = int(h * (img.get_width() / img.get_height()))
-                self.char_images.append(pygame.transform.smoothscale(img, (w, h)))
+                original_img = pygame.image.load(path).convert_alpha()
+                h_game = 80
+                w_game = int(h_game * (original_img.get_width() / original_img.get_height()))
+                self.char_game_images.append(pygame.transform.smoothscale(original_img, (w_game, h_game)))
+                
+                h_menu = 280
+                w_menu = int(h_menu * (original_img.get_width() / original_img.get_height()))
+                self.char_menu_images.append(pygame.transform.smoothscale(original_img, (w_menu, h_menu)))
             except:
-                f = pygame.Surface((60, 80)); f.fill((200, 100, 200))
-                self.char_images.append(f)
-        self.original_image = self.char_images[0]
+                f = pygame.Surface((60, 80), pygame.SRCALPHA); f.fill((200, 100, 200))
+                self.char_game_images.append(f)
+                self.char_menu_images.append(pygame.transform.scale(f, (180, 240)))
+        self.select_char(0)
+
+    def select_char(self, idx):
+        self.current_char_idx = idx
+        self.original_image = self.char_game_images[idx]
         self.image = self.original_image
         self.rect = self.image.get_rect()
 
-    def select_char(self, idx):
-        if 0 <= idx < len(self.char_images):
-            self.current_char_idx = idx
-            self.original_image = self.char_images[idx]
-            self.image = self.original_image
-            self.rect = self.image.get_rect()
+    def get_menu_image(self):
+        return self.char_menu_images[self.current_char_idx]
+    
+    def get_current_name(self):
+        return self.char_names[self.current_char_idx]
 
     def reset(self):
         self.pos = pygame.Vector2(WIDTH // 2, HEIGHT - 100)
         self.vel = pygame.Vector2(0, 0)
+        self.accel_x = 0.7 
+        self.friction = 0.9 
         self.angle = 0
         self.score = 0
         self.speed_multiplier = 1.0
         self.rocket_timer = 0
 
-    def update(self, target_x):
+    def update(self, target_x, is_pressing):
+        # Исправленное горизонтальное управление
+        if is_pressing:
+            dx = target_x - self.pos.x
+            
+            # Учет перелета через край экрана для расчета кратчайшего пути
+            if dx > WIDTH / 2: dx -= WIDTH
+            elif dx < -WIDTH / 2: dx += WIDTH
+            
+            # "Мертвая зона" — если мышь в пределах 10 пикселей, не ускоряемся (убирает дрожание)
+            if abs(dx) > 10:
+                if dx > 0: self.vel.x += self.accel_x
+                else: self.vel.x -= self.accel_x
+        
+        # Плавное торможение
+        self.vel.x *= self.friction
+        
+        # Ограничение скорости
+        limit = 10 * self.speed_multiplier
+        if self.vel.x > limit: self.vel.x = limit
+        if self.vel.x < -limit: self.vel.x = -limit
+
+        # Вертикальное движение
         if self.rocket_timer > ROCKET_SLOWDOWN:
             self.vel.y = ROCKET_MAX_SPEED
             self.rocket_timer -= 1
@@ -69,19 +104,21 @@ class Player(pygame.sprite.Sprite):
             if self.angle % 360 != 0: self.angle -= 10
         else:
             self.vel.y += BASE_GRAVITY * self.speed_multiplier
-            # Плавное следование за пальцем
-            dx = target_x - self.pos.x
-            self.vel.x = dx * 0.18 # Чуть увеличил отзывчивость
-            self.angle = (-self.vel.x * 2.5)
+            # Наклон зависит от скорости, но плавно
+            target_angle = -self.vel.x * 3
+            self.angle += (target_angle - self.angle) * 0.1
 
+        # Применяем физику
         self.pos += self.vel
-        if self.pos.x > WIDTH: self.pos.x = 0
-        elif self.pos.x < 0: self.pos.x = WIDTH
+
+        # Бесконечный экран
+        if self.pos.x > WIDTH: self.pos.x -= WIDTH
+        elif self.pos.x < 0: self.pos.x += WIDTH
         
-        self.rect.midtop = self.pos
+        # Отрисовка
         img = self.original_image if self.vel.x >= 0 else pygame.transform.flip(self.original_image, True, False)
         self.image = pygame.transform.rotate(img, self.angle)
-        self.rect = self.image.get_rect(center=self.rect.center)
+        self.rect = self.image.get_rect(center=(int(self.pos.x), int(self.pos.y)))
 
 class Booster(pygame.sprite.Sprite):
     def __init__(self, x, y):
@@ -103,8 +140,13 @@ class Platform(pygame.sprite.Sprite):
         super().__init__()
         self.type, self.rect, self.active = p_type, pygame.Rect(x, y, width, 18), True
         self.speed = random.choice([-2, 2])
-        self.has_spring = random.random() > 0.88 and p_type == "normal" and width < 100
-        self.has_booster = random.random() > 0.94 and p_type == "normal"
+        self.has_spring = False
+        self.has_booster = False
+        
+        if p_type == "normal":
+            rnd = random.random()
+            if rnd > 0.92: self.has_spring = True
+            elif rnd > 0.88: self.has_booster = True
 
     def update(self, shift, mult):
         self.rect.y += shift
@@ -158,22 +200,15 @@ class Enemy(pygame.sprite.Sprite):
 # ================== MAIN ==================
 async def main():
     pygame.init()
-    # Использование SCALED важно для мобильных версий
     screen = pygame.display.set_mode((WIDTH, HEIGHT), pygame.SCALED)
     clock = pygame.time.Clock()
     
-    # Безопасная инициализация шрифтов (иногда в WebApp они ломаются)
     try:
         font_s = pygame.font.SysFont("Arial", 18, bold=True)
-        font_b = pygame.font.SysFont("Arial", 32, bold=True)
+        font_b = pygame.font.SysFont("Arial", 36, bold=True)
+        font_name = pygame.font.SysFont("Arial", 28, bold=True)
     except:
-        font_s = pygame.font.Font(None, 24)
-        font_b = pygame.font.Font(None, 40)
-
-    # ЛОАДЕР
-    screen.fill(BLACK)
-    pygame.display.flip()
-    await asyncio.sleep(0.5) 
+        font_s = pygame.font.Font(None, 24); font_b = pygame.font.Font(None, 40); font_name = pygame.font.Font(None, 34)
 
     try:
         bg = pygame.transform.smoothscale(pygame.image.load("bg.jpg").convert(), (WIDTH, HEIGHT))
@@ -181,66 +216,79 @@ async def main():
         bg = pygame.Surface((WIDTH, HEIGHT)); bg.fill(SKY_BLUE)
 
     player = Player()
-    platforms, boosters = [], pygame.sprite.Group()
-    bullets, enemies = pygame.sprite.Group(), pygame.sprite.Group()
+    platforms = []
+    boosters = pygame.sprite.Group()
+    bullets = pygame.sprite.Group()
+    enemies = pygame.sprite.Group()
     shoot_btn = pygame.Rect(WIDTH//2 - 35, HEIGHT - 90, 70, 70)
+
+    swipe_start_x = 0
+    is_swiping = False
 
     def reset_game():
         player.reset()
         platforms.clear(); boosters.empty(); bullets.empty(); enemies.empty()
-        platforms.append(Platform(0, HEIGHT - 20, WIDTH, "normal"))
-        for i in range(10): platforms.append(Platform(random.randint(0, 285), HEIGHT - 110 - i*90))
+        platforms.append(Platform(WIDTH//2 - 60, HEIGHT - 50, 120, "normal"))
+        for i in range(1, 10): 
+            p = Platform(random.randint(0, WIDTH-80), HEIGHT - 50 - i*100)
+            platforms.append(p)
+            if p.has_booster: boosters.add(Booster(p.rect.centerx, p.rect.top-25))
 
     reset_game()
     state = "MENU"
 
     while True:
         screen.blit(bg, (0, 0))
-        m_pos, m_down = pygame.mouse.get_pos(), pygame.mouse.get_pressed()[0]
+        m_pos = pygame.mouse.get_pos()
+        m_down = pygame.mouse.get_pressed()[0]
         
         for event in pygame.event.get():
             if event.type == pygame.QUIT: return
             if event.type == pygame.MOUSEBUTTONDOWN:
-                if state == "MENU":
-                    # КЛИК ПО ПЕРСОНАЖАМ (Увеличенная зона выбора)
-                    clicked_char = False
-                    for i in range(4):
-                        char_zone = pygame.Rect((WIDTH//4)*i, 200, WIDTH//4, 200)
-                        if char_zone.collidepoint(m_pos):
-                            player.select_char(i)
-                            clicked_char = True
-                            break
-                    if not clicked_char and m_pos[1] > 400: # Клик в нижней части экрана для старта
+                swipe_start_x = event.pos[0]
+                is_swiping = True
+            if event.type == pygame.MOUSEBUTTONUP:
+                if is_swiping and state == "MENU":
+                    swipe_dist = event.pos[0] - swipe_start_x
+                    if abs(swipe_dist) > 40:
+                        idx = (player.current_char_idx + (1 if swipe_dist < 0 else -1)) % len(player.char_paths)
+                        player.select_char(idx)
+                    elif event.pos[1] > 450:
                         reset_game(); state = "PLAYING"
-                
-                elif state == "PLAYING":
-                    if shoot_btn.collidepoint(m_pos):
-                        if player.rocket_timer <= 0: bullets.add(Bullet(player.rect.centerx, player.rect.top))
-                
                 elif state == "GAMEOVER":
-                    if pygame.Rect(WIDTH//2-85, HEIGHT//2+20, 170, 45).collidepoint(m_pos): reset_game(); state = "PLAYING"
-                    elif pygame.Rect(WIDTH//2-85, HEIGHT//2+80, 170, 45).collidepoint(m_pos): state = "MENU"
+                    if pygame.Rect(WIDTH//2-85, HEIGHT//2+20, 170, 45).collidepoint(event.pos): 
+                        reset_game(); state = "PLAYING"
+                    elif pygame.Rect(WIDTH//2-85, HEIGHT//2+80, 170, 45).collidepoint(event.pos): 
+                        state = "MENU"
+                is_swiping = False
+            if event.type == pygame.MOUSEBUTTONDOWN and state == "PLAYING":
+                if shoot_btn.collidepoint(event.pos):
+                    if player.rocket_timer <= 0: bullets.add(Bullet(player.rect.centerx, player.rect.top))
 
         if state == "MENU":
-            txt = font_b.render("ВЫБЕРИ ГЕРОЯ", True, DARK_BLUE)
-            screen.blit(txt, (WIDTH//2 - txt.get_width()//2, 80))
-            
-            for i, img in enumerate(player.char_images):
-                center_x = (WIDTH // 4) * i + (WIDTH // 8)
-                char_rect = img.get_rect(center=(center_x, 300))
-                if i == player.current_char_idx:
-                    pygame.draw.rect(screen, YELLOW, char_rect.inflate(20, 20), 4, border_radius=10)
-                screen.blit(img, char_rect)
-            
-            start_txt = font_s.render("НАЖМИ ВНИЗУ ДЛЯ СТАРТА", True, DARK_BLUE)
-            screen.blit(start_txt, (WIDTH//2 - start_txt.get_width()//2, 500))
+            title = font_b.render("ВЫБЕРИ ГЕРОЯ", True, DARK_BLUE)
+            screen.blit(title, (WIDTH//2 - title.get_width()//2, 70))
+            t = pygame.time.get_ticks() * 0.004
+            pulse = 1.0 + math.sin(t) * 0.03
+            bobbing = math.sin(t * 0.8) * 10
+            char_img = player.get_menu_image()
+            w, h = char_img.get_size()
+            scaled_char = pygame.transform.smoothscale(char_img, (int(w * pulse), int(h * pulse)))
+            char_rect = scaled_char.get_rect(center=(WIDTH//2, HEIGHT//2 - 10 + bobbing))
+            screen.blit(scaled_char, char_rect)
+            name_text = font_name.render(player.get_current_name(), True, DARK_BLUE)
+            name_bg = pygame.Rect(0, 0, name_text.get_width() + 30, 44)
+            name_bg.center = (WIDTH//2, char_rect.bottom + 40 - bobbing)
+            pygame.draw.rect(screen, WHITE, name_bg, border_radius=12)
+            screen.blit(name_text, (name_bg.centerx - name_text.get_width()//2, name_bg.centery - name_text.get_height()//2))
+            start_area = pygame.Rect(WIDTH//2 - 100, HEIGHT - 100, 200, 55)
+            pygame.draw.rect(screen, DARK_BLUE, start_area, border_radius=18)
+            screen.blit(font_s.render("ИГРАТЬ", True, WHITE), (start_area.centerx - 30, start_area.centery - 10))
 
         elif state == "PLAYING":
-            # СЛЕДОВАНИЕ ЗА ПАЛЬЦЕМ
-            target_x = m_pos[0] if m_down and not shoot_btn.collidepoint(m_pos) else player.pos.x
             player.speed_multiplier = 1.0 + (player.score // 70) * 0.2
-            player.update(target_x)
-
+            player.update(m_pos[0], m_down)
+            
             shift = max(0, (HEIGHT//2 - player.pos.y) * 0.15) if player.pos.y < HEIGHT//2 else 0
             player.pos.y += shift
             
@@ -249,9 +297,10 @@ async def main():
                 p.update(shift, player.speed_multiplier)
                 if p.rect.top > HEIGHT:
                     platforms.remove(p)
-                    new_y = min(pl.rect.y for pl in platforms) - 90
-                    platforms.append(Platform(random.randint(0, 285), new_y, p_type="breakable" if random.random()>0.9 else "moving" if random.random()>0.8 else "normal"))
-                    if platforms[-1].has_booster: boosters.add(Booster(platforms[-1].rect.centerx, platforms[-1].rect.top-25))
+                    new_y = min([pl.rect.y for pl in platforms]) - 100
+                    new_p = Platform(random.randint(0, WIDTH-80), new_y, p_type="breakable" if random.random()>0.9 else "moving" if random.random()>0.8 else "normal")
+                    platforms.append(new_p)
+                    if new_p.has_booster: boosters.add(Booster(new_p.rect.centerx, new_p.rect.top-25))
                     player.score += 1
                     if random.random() > 0.96: enemies.add(Enemy(-100))
 
@@ -270,7 +319,6 @@ async def main():
             boosters.draw(screen); enemies.draw(screen); bullets.draw(screen)
             screen.blit(player.image, player.rect)
             
-            # UI
             pygame.draw.rect(screen, (0,0,0,100), (0,0,WIDTH,40))
             screen.blit(font_s.render(f"СЧЕТ: {player.score}", True, WHITE), (15, 10))
             pygame.draw.circle(screen, GOLD, shoot_btn.center, 35)
@@ -280,11 +328,14 @@ async def main():
 
         elif state == "GAMEOVER":
             if player.score > player.high_score: player.high_score = player.score
-            screen.blit(font_s.render("КОНЕЦ ИГРЫ", True, RED), (WIDTH//2-60, HEIGHT//2-100))
-            pygame.draw.rect(screen, WHITE, (WIDTH//2-85, HEIGHT//2+20, 170, 45), border_radius=10)
-            screen.blit(font_s.render("ЕЩЕ РАЗ", True, BLACK), (WIDTH//2-40, HEIGHT//2+30))
-            pygame.draw.rect(screen, DARK_BLUE, (WIDTH//2-85, HEIGHT//2+80, 170, 45), border_radius=10)
-            screen.blit(font_s.render("В МЕНЮ", True, WHITE), (WIDTH//2-35, HEIGHT//2+90))
+            msg = font_b.render("КОНЕЦ ИГРЫ", True, RED)
+            screen.blit(msg, (WIDTH//2 - msg.get_width()//2, HEIGHT//2-100))
+            btn_restart = pygame.Rect(WIDTH//2-85, HEIGHT//2+20, 170, 45)
+            pygame.draw.rect(screen, WHITE, btn_restart, border_radius=10)
+            screen.blit(font_s.render("ЕЩЕ РАЗ", True, BLACK), (btn_restart.centerx-35, btn_restart.centery-10))
+            btn_menu = pygame.Rect(WIDTH//2-85, HEIGHT//2+80, 170, 45)
+            pygame.draw.rect(screen, DARK_BLUE, btn_menu, border_radius=10)
+            screen.blit(font_s.render("В МЕНЮ", True, WHITE), (btn_menu.centerx-30, btn_menu.centery-10))
 
         pygame.display.flip()
         await asyncio.sleep(0)
